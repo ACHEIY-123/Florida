@@ -21,9 +21,20 @@ jobs:
       FRIDA_VERSION: ${{ steps.pullFridaLatestRelease.outputs.FRIDA_VERSION }}
       ALREADY_RELEASE: ${{ steps.checkReleaseVersion.outputs.ALREADY_RELEASE }}
     steps:
-      - name: Set Fixed Frida Version
+      - name: Pull Frida Latest Release
         id: pullFridaLatestRelease
-        run: echo "FRIDA_VERSION=16.2.1" >> $GITHUB_OUTPUT
+        uses: actions/github-script@v3
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const releaseResponse = await github.repos.getLatestRelease({
+              owner: 'frida',
+              repo: 'frida',
+            })
+            const {
+              data: { tag_name: ver }
+            } = releaseResponse;
+            core.setOutput('FRIDA_VERSION', ver);
 
       - name: Split Repository Name
         id: split_name
@@ -142,34 +153,36 @@ jobs:
           git config --global http.maxRequestBuffer 100M
           git config --global core.compression 0
 
-          # 2. 拉取主仓库（指定 16.2.1 版本，加上循环重试机制）
-          echo "Starting to clone Frida main repo..."
-          for i in {1..5}; do git clone --branch 16.2.1 https://github.com/frida/frida && break || sleep 10; done
+          # 2. 拉取主仓库（提取动态获取的最新版本号，并强制克隆该版本的稳定代码）
+          VERSION="${{ needs.check_version.outputs.FRIDA_VERSION }}"
+          echo "Starting to clone Frida stable tag: $VERSION ..."
+          for i in {1..5}; do git clone --branch $VERSION https://github.com/frida/frida && break || sleep 10; done
           cd frida
           
           # 3. 开启 8 线程并发拉取子模块
           echo "Starting to clone huge submodules with 8 parallel jobs..."
           for i in {1..10}; do git submodule update --init --recursive --jobs 8 && break || sleep 15; done
-            for path in ../patches/*
-            do
-              name=$(basename $path)
-              real=$(realpath $path)
-              echo "Apply patches in $real to frida/subprojects/$name"
-              cd subprojects/$name
-              git am ../../../patches/$name/*.patch
-              cd ../..
-            done
-            cd ..
+          
+          for path in ../patches/*
+          do
+            name=$(basename $path)
+            real=$(realpath $path)
+            echo "Apply patches in $real to frida/subprojects/$name"
+            cd subprojects/$name
+            git am ../../../patches/$name/*.patch
+            cd ../..
+          done
+          cd ..
             
-            ARCHES="android-arm android-arm64 android-x86 android-x86_64"
-            for ARCH in $ARCHES
-            do
-              mkdir build-$ARCH
-              cd build-$ARCH
-              ../frida/configure --host=$ARCH
-              make
-              cd ..
-            done
+          ARCHES="android-arm android-arm64 android-x86 android-x86_64"
+          for ARCH in $ARCHES
+          do
+            mkdir build-$ARCH
+            cd build-$ARCH
+            ../frida/configure --host=$ARCH
+            make
+            cd ..
+          done
       
       - name: Split Repository Name
         id: split_name
