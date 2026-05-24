@@ -148,8 +148,9 @@ jobs:
           export ANDROID_NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}
           echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT"
           
-          git clone --recurse-submodules https://github.com/frida/frida
+          git clone --depth=1 https://github.com/frida/frida
           cd frida
+          git submodule update --init --recursive --depth=1
           for path in ../patches/*
           do
             name=$(basename $path)
