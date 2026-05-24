@@ -21,20 +21,9 @@ jobs:
       FRIDA_VERSION: ${{ steps.pullFridaLatestRelease.outputs.FRIDA_VERSION }}
       ALREADY_RELEASE: ${{ steps.checkReleaseVersion.outputs.ALREADY_RELEASE }}
     steps:
-      - name: Pull Frida Latest Release
+      - name: Set Fixed Frida Version
         id: pullFridaLatestRelease
-        uses: actions/github-script@v3
-        with:
-          github-token: ${{secrets.GITHUB_TOKEN}}
-          script: |
-            const releaseResponse = await github.repos.getLatestRelease({
-              owner: 'frida',
-              repo: 'frida',
-            })
-            const {
-              data: { tag_name: ver }
-            } = releaseResponse;
-            core.setOutput('FRIDA_VERSION', ver);
+        run: echo "FRIDA_VERSION=16.2.1" >> $GITHUB_OUTPUT
 
       - name: Split Repository Name
         id: split_name
@@ -148,17 +137,17 @@ jobs:
           export ANDROID_NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}
           echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT"
           
-          # 1. 扩大 Git 底层缓冲区，防止拉取大文件（如 V8 引擎）时内存爆掉断开连接
+          # 1. 扩大 Git 底层缓冲区
           git config --global http.postBuffer 1048576000
           git config --global http.maxRequestBuffer 100M
           git config --global core.compression 0
 
-          # 2. 拉取主仓库（加上循环重试机制）
+          # 2. 拉取主仓库（指定 16.2.1 版本，加上循环重试机制）
           echo "Starting to clone Frida main repo..."
-          for i in {1..5}; do git clone https://github.com/frida/frida && break || sleep 10; done
+          for i in {1..5}; do git clone --branch 16.2.1 https://github.com/frida/frida && break || sleep 10; done
           cd frida
           
-          # 3. 终极杀招：开启 8 线程并发拉取子模块，且失败自动重试，死磕到底
+          # 3. 开启 8 线程并发拉取子模块
           echo "Starting to clone huge submodules with 8 parallel jobs..."
           for i in {1..10}; do git submodule update --init --recursive --jobs 8 && break || sleep 15; done
             for path in ../patches/*
